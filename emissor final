@@ -1,0 +1,155 @@
+
+#include <LoRa.h>
+#include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+ 
+/* Definicoes para comunicação com radio LoRa */
+#define SCK_LORA         5
+#define MISO_LORA       19
+#define MOSI_LORA       27
+#define RESET_PIN_LORA  14
+#define SS_PIN_LORA     18
+ 
+#define HIGH_GAIN_LORA  20  /* dBm */
+#define BAND            915E6  /* 915MHz de frequencia */
+ 
+/* Definicoes gerais */
+#define DEBUG_SERIAL_BAUDRATE 115200
+ 
+/* Variaveis globais */
+long informacao_a_ser_enviada = 0;
+String lindinho = "";
+
+Adafruit_MPU6050 mpu;
+ 
+/* Local prototypes */
+bool init_comunicacao_lora(void);
+ 
+/* Funcao: inicia comunicação com chip LoRa
+ * Parametros: nenhum
+ * Retorno: true: comunicacao ok
+ *        false: falha na comunicacao
+*/
+bool init_comunicacao_lora(void)
+{
+  bool status_init = false;
+  Serial.println("[LoRa Sender] Tentando iniciar comunicacao com o radio LoRa...");
+  SPI.begin(SCK_LORA, MISO_LORA, MOSI_LORA, SS_PIN_LORA);
+  LoRa.setPins(SS_PIN_LORA, RESET_PIN_LORA, LORA_DEFAULT_DIO0_PIN);
+   
+  if (!LoRa.begin(BAND))
+  {
+      Serial.println("[LoRa Sender] Comunicacao com o radio LoRa falhou. Nova tentativa em 1 segundo...");     
+      delay(1000);
+      status_init = false;
+  }
+  else
+  {
+      /* Configura o ganho do receptor LoRa para 20dBm, o maior ganho possível (visando maior alcance possível) */
+      LoRa.setTxPower(HIGH_GAIN_LORA);
+      Serial.println("[LoRa Sender] Comunicacao com o radio LoRa ok");
+      status_init = true;
+  }
+ 
+  return status_init;
+}
+ 
+/* Funcao de setup */
+void setup()
+{    
+  Serial.begin(DEBUG_SERIAL_BAUDRATE);
+  while (!Serial);
+ 
+  /* Tenta, até obter sucesso, comunicacao com o chip LoRa */
+  while(init_comunicacao_lora() == false);
+  if (!mpu.begin()) {
+  Serial.println("Failed to find MPU6050 chip");
+  while (1) {
+    delay(10);
+  }
+  }
+  Serial.println("MPU6050 Found!");
+
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+  Serial.print("Accelerometer range set to: ");
+  switch (mpu.getAccelerometerRange()) {
+  case MPU6050_RANGE_2_G:
+  Serial.println("+-2G");
+  break;
+  case MPU6050_RANGE_4_G:
+  Serial.println("+-4G");
+  break;
+  case MPU6050_RANGE_8_G:
+  Serial.println("+-8G");
+  break;
+  case MPU6050_RANGE_16_G:
+  Serial.println("+-16G");
+  break;
+  }
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  Serial.print("Gyro range set to: ");
+  switch (mpu.getGyroRange()) {
+  case MPU6050_RANGE_250_DEG:
+  Serial.println("+- 250 deg/s");
+  break;
+  case MPU6050_RANGE_500_DEG:
+  Serial.println("+- 500 deg/s");
+  break;
+  case MPU6050_RANGE_1000_DEG:
+  Serial.println("+- 1000 deg/s");
+  break;
+  case MPU6050_RANGE_2000_DEG:
+  Serial.println("+- 2000 deg/s");
+  break;
+  }
+
+  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+  Serial.print("Filter bandwidth set to: ");
+  switch (mpu.getFilterBandwidth()) {
+  case MPU6050_BAND_260_HZ:
+  Serial.println("260 Hz");
+  break;
+  case MPU6050_BAND_184_HZ:
+  Serial.println("184 Hz");
+  break;
+  case MPU6050_BAND_94_HZ:
+  Serial.println("94 Hz");
+  break;
+  case MPU6050_BAND_44_HZ:
+  Serial.println("44 Hz");
+  break;
+  case MPU6050_BAND_21_HZ:
+  Serial.println("21 Hz");
+  break;
+  case MPU6050_BAND_10_HZ:
+  Serial.println("10 Hz");
+  break;
+  case MPU6050_BAND_5_HZ:
+  Serial.println("5 Hz");
+  break;
+  }
+
+  Serial.println("");
+  delay(100);    
+}
+ 
+/* Programa principal */
+void loop()
+{
+  /* Envia a informação */
+  LoRa.beginPacket();
+//  LoRa.write((unsigned char *)&informacao_a_ser_enviada, sizeof(informacao_a_ser_enviada));
+  LoRa.print(lindinho);
+  LoRa.endPacket();
+    
+  /* Incrementa a informação para o próximo envio e aguarda
+    1 segundo até enviar a próxima informação */
+  informacao_a_ser_enviada++;
+  delay(1000);
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+  lindinho = "ax:" + String(a.acceleration.x) + "; ay:" + String(a.acceleration.y) + "; az:" + String(a.acceleration.z)+";" +"mx:"+ (g.gyro.x) + "; my:" + (g.gyro.y) +"; mz:"+(g.gyro.z)+"; C:"+ (temp.temperature)+";";
+   
+}
